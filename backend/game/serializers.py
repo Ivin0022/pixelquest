@@ -5,10 +5,13 @@ from users.models import Team, NodeStatus
 
 
 class NodeCreateSerializer(serializers.ModelSerializer):
+    map = serializers.PrimaryKeyRelatedField(queryset=Map.objects.all(), required=True)
+    
     class Meta:
         model = Node
         fields = [
             "id",
+            "map",
             "data",
             "clue",
             "answer",
@@ -132,6 +135,26 @@ class MapListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Map
         fields = ['id', 'name', 'description', 'is_active', 'objects_count', 'nodes_count', 'created_at', 'updated_at']
+
+
+class MapCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating a new Map."""
+
+    class Meta:
+        model = Map
+        fields = ['id', 'name', 'description', 'is_active', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class MapUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating an existing Map (full or partial)."""
+
+    name = serializers.CharField(required=False)
+
+    class Meta:
+        model = Map
+        fields = ['id', 'name', 'description', 'is_active', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 
 class MapObjectSerializer(serializers.ModelSerializer):
@@ -298,20 +321,12 @@ class MapGraphResponseSerializer(serializers.Serializer):
 
 
 class EstablishRelationRequestSerializer(serializers.Serializer):
-    map_id = serializers.IntegerField(required=True)
     parent_id = serializers.IntegerField(required=True)
     child_id = serializers.IntegerField(required=True)
 
     def validate(self, attrs):
-        map_id = attrs.get('map_id')
         parent_id = attrs.get('parent_id')
         child_id = attrs.get('child_id')
-
-        try:
-            map_obj = Map.objects.get(pk=map_id)
-            attrs['map'] = map_obj
-        except Map.DoesNotExist:
-            raise serializers.ValidationError({'map_id': f'Map with id {map_id} does not exist.'})
 
         try:
             parent = Node.objects.get(pk=parent_id)
@@ -325,22 +340,22 @@ class EstablishRelationRequestSerializer(serializers.Serializer):
         except Node.DoesNotExist:
             raise serializers.ValidationError({'child_id': f'Child node with id {child_id} does not exist.'})
 
-        # Ensure parent and child belong to the specified map
-        if parent.map_id and parent.map_id != map_id:
-            raise serializers.ValidationError({
-                'parent_id': f'Parent node {parent_id} belongs to map {parent.map_id}, not map {map_id}.'
-            })
-        elif not parent.map_id:
-            parent.map = map_obj
-            parent.save(update_fields=['map'])
+        # Ensure both nodes belong to the same map
+        if parent.map_id and child.map_id and parent.map_id != child.map_id:
+            raise serializers.ValidationError(
+                f'Parent node {parent_id} (map {parent.map_id}) and '
+                f'child node {child_id} (map {child.map_id}) belong to different maps.'
+            )
 
-        if child.map_id and child.map_id != map_id:
-            raise serializers.ValidationError({
-                'child_id': f'Child node {child_id} belongs to map {child.map_id}, not map {map_id}.'
-            })
-        elif not child.map_id:
-            child.map = map_obj
-            child.save(update_fields=['map'])
+        if not parent.map_id:
+            raise serializers.ValidationError(
+                {'parent_id': f'Parent node {parent_id} has no map assigned. Set a map when creating the node.'}
+            )
+
+        if not child.map_id:
+            raise serializers.ValidationError(
+                {'child_id': f'Child node {child_id} has no map assigned. Set a map when creating the node.'}
+            )
 
         return attrs
 

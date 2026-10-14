@@ -25,6 +25,8 @@ from .serializers import (
     TargetAttackSerializer,
     MapListSerializer,
     MapSerializer,
+    MapCreateSerializer,
+    MapUpdateSerializer,
     MapObjectSerializer,
     MapObjectCreateSerializer,
     MapObjectUpdateSerializer,
@@ -314,7 +316,6 @@ class NodeViewSet(viewsets.ModelViewSet):
         if not serializer.is_valid():
             return Response(serializer.errors, status=400)
 
-        map_obj = serializer.validated_data['map']
         parent = serializer.validated_data['parent']
         child = serializer.validated_data['child']
 
@@ -334,7 +335,7 @@ class NodeViewSet(viewsets.ModelViewSet):
             {
                 "detail": f"Successfully established relation as {relation_type}",
                 "relation_type": relation_type,
-                "map_id": map_obj.id,
+                "map_id": child.map_id,
                 "parent_id": parent.id,
                 "child_id": child.id,
             },
@@ -423,6 +424,62 @@ class MapViewSet(viewsets.ViewSet):
         maps = Map.objects.all().order_by('-created_at')
         serializer = MapListSerializer(maps, many=True)
         return Response(serializer.data)
+
+    @extend_schema(
+        summary="Create Map",
+        description="Creates a new game map with the given name, description, and active status.",
+        request=MapCreateSerializer,
+        responses={201: MapCreateSerializer},
+    )
+    def create(self, request, *args, **kwargs):
+        serializer = MapCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        serializer.save()
+        return Response(serializer.data, status=201)
+
+    @extend_schema(
+        summary="Update Map (Full)",
+        description="Fully updates a game map's details (name, description, is_active).",
+        request=MapUpdateSerializer,
+        responses={200: MapUpdateSerializer},
+    )
+    def update(self, request, pk=None, *args, **kwargs):
+        try:
+            map_obj = Map.objects.get(pk=pk)
+        except Map.DoesNotExist:
+            return Response({'detail': f'Map with id {pk} does not exist.'}, status=404)
+
+        partial = kwargs.pop('partial', False)
+        serializer = MapUpdateSerializer(map_obj, data=request.data, partial=partial)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        serializer.save()
+        return Response(serializer.data, status=200)
+
+    @extend_schema(
+        summary="Partial Update Map",
+        description="Partially updates a game map's details. Only the fields provided will be updated.",
+        request=MapUpdateSerializer,
+        responses={200: MapUpdateSerializer},
+    )
+    def partial_update(self, request, pk=None, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, pk=pk, *args, **kwargs)
+
+    @extend_schema(
+        summary="Delete Map",
+        description="Deletes a game map and all its associated nodes and objects.",
+        responses={204: None},
+    )
+    def destroy(self, request, pk=None, *args, **kwargs):
+        try:
+            map_obj = Map.objects.get(pk=pk)
+        except Map.DoesNotExist:
+            return Response({'detail': f'Map with id {pk} does not exist.'}, status=404)
+
+        map_obj.delete()
+        return Response({'detail': f'Map "{map_obj.name}" deleted successfully.'}, status=200)
 
     @extend_schema(
         summary="Get Cyclic Graph Map by ID",
