@@ -29,7 +29,7 @@ DecorationAssetKey = ObjectAssetKey
 class Map(models.Model):
     name = models.CharField(max_length=150)
     description = models.TextField(blank=True, default="")
-    is_active = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

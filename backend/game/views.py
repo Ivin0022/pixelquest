@@ -435,7 +435,17 @@ class MapViewSet(viewsets.ViewSet):
         serializer = MapCreateSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=400)
-        serializer.save()
+
+        # Force is_active=True for the first map ever created or if no active map exists
+        is_first_map = not Map.objects.exists() or not Map.objects.filter(is_active=True).exists()
+        is_active = serializer.validated_data.get('is_active', False) or is_first_map
+
+        if is_active:
+            Map.objects.update(is_active=False)
+            serializer.save(is_active=True)
+        else:
+            serializer.save(is_active=False)
+
         return Response(serializer.data, status=201)
 
     @extend_schema(
@@ -454,6 +464,20 @@ class MapViewSet(viewsets.ViewSet):
         serializer = MapUpdateSerializer(map_obj, data=request.data, partial=partial)
         if not serializer.is_valid():
             return Response(serializer.errors, status=400)
+
+        if 'is_active' in serializer.validated_data:
+            new_is_active = serializer.validated_data['is_active']
+            if new_is_active:
+                # Enforce single active map: deactivate all others when this map is set active
+                Map.objects.exclude(pk=pk).update(is_active=False)
+            else:
+                # Prevent deactivating the sole active map
+                if map_obj.is_active and not Map.objects.exclude(pk=pk).filter(is_active=True).exists():
+                    return Response(
+                        {'detail': 'Cannot deactivate the sole active map. At least one map must remain active.'},
+                        status=400,
+                    )
+
         serializer.save()
         return Response(serializer.data, status=200)
 
@@ -478,8 +502,18 @@ class MapViewSet(viewsets.ViewSet):
         except Map.DoesNotExist:
             return Response({'detail': f'Map with id {pk} does not exist.'}, status=404)
 
+        was_active = map_obj.is_active
+        map_name = map_obj.name
         map_obj.delete()
-        return Response({'detail': f'Map "{map_obj.name}" deleted successfully.'}, status=200)
+
+        # If the active map was deleted and other maps exist, activate the newest remaining map
+        if was_active:
+            fallback_map = Map.objects.order_by('-created_at').first()
+            if fallback_map:
+                fallback_map.is_active = True
+                fallback_map.save(update_fields=['is_active'])
+
+        return Response({'detail': f'Map "{map_name}" deleted successfully.'}, status=200)
 
     @extend_schema(
         summary="Get Cyclic Graph Map by ID",
