@@ -412,6 +412,7 @@ class MapViewSet(viewsets.ViewSet):
     API endpoint that returns maps and their complete cyclic graph map of nodes.
     Django MPTT represents the tree hierarchy, while alt_parent and alt_child connect cycles at junction nodes.
     """
+    queryset = Map.objects.none()
     permission_classes = [AllowAny]
     http_method_names = ['get', 'post', 'put', 'patch', 'delete']
 
@@ -723,6 +724,7 @@ class MapViewSet(viewsets.ViewSet):
     @extend_schema(
         summary="Get Objects of a Map",
         description="Returns all visual styling objects belonging to the specified Map ID.",
+        operation_id="get_map_objects",
         responses={200: MapObjectSerializer(many=True)},
     )
     @action(detail=True, methods=['get'], url_path='objects')
