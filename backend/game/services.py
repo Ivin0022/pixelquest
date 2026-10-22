@@ -1,6 +1,6 @@
 from typing import Tuple
 from rest_framework import serializers
-from django.conf import settings
+from rest_framework.exceptions import NotFound
 from .models import Node, Effects, TeamNode, GameHistory
 from users.models import Team
 from .serializers import NodeSerializer, SubmitResponseSerializer
@@ -27,7 +27,10 @@ def record_game_history(team, node, action="Answered correctly"):
 
 def process_submit(user, node_id) -> Tuple[int, serializers.Serializer]:
     """Process a submit request"""
-    node = Node.objects.get(pk=node_id)
+    try:
+        node = Node.objects.get(pk=node_id)
+    except Node.DoesNotExist as e:
+        raise NotFound("Node not found.")
     team = user.team
     if not team:
         # user without a team

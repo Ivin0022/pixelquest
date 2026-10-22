@@ -1,4 +1,5 @@
 from collections import defaultdict
+from django.db import transaction
 from rest_framework import viewsets, serializers
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -85,7 +86,23 @@ class NodeViewSet(viewsets.ModelViewSet):
         serializer = NodeCreateSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=400)
-        serializer.save()
+
+        parent = serializer.validated_data.pop('parent', None)
+        try:
+            with transaction.atomic():
+                created_node = serializer.save()
+                if parent and created_node:
+                    establish_node_relation(parent, created_node)
+        except serializers.ValidationError as e:
+            error_detail = e.detail
+            if isinstance(error_detail, dict) and "detail" in error_detail:
+                msg = error_detail["detail"]
+            else:
+                msg = str(error_detail)
+            return Response({"parent": msg if isinstance(msg, list) else [msg]}, status=400)
+        except Exception as e:
+            return Response({"parent": [str(e)]}, status=400)
+
         return Response(serializer.data, status=201)
 
     @extend_schema(request=NodeUpdateSerializer, responses={200: NodeUpdateSerializer})
